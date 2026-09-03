@@ -5,8 +5,7 @@ Implementation of DYRE (DYnamic REconfgurable structure for in-feld detection an
 This implementation was based on:
 
 ```bibtex
-@INPROCEEDINGS{Kless_STL,
-  @article{RodriguezCondia2021DYRE,
+@article{RodriguezCondia2021DYRE,
   author    = {Rodriguez Condia, Josie Esteban and Narducci, Pierpaolo and Sonza Reorda, Matteo and Sterpone, Luca},
   title     = {DYRE: a DYnamic REconfigurable solution to increase GPGPU's reliability},
   journal   = {The Journal of Supercomputing},
