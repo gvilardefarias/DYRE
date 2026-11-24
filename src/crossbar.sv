@@ -13,12 +13,23 @@ module crossbar #(
 
     localparam unsigned OUTPUT_RATIO = NUM_INPUTS/NUM_OUTPUTS
 ) (
-    input  DATA_TYPE       [NUM_INPUTS-1:0] data_i,  // Input data
-    input  logic [$clog2(OUTPUT_RATIO)-1:0] s_i,     // Select signal
+    input  DATA_TYPE                        [NUM_INPUTS-1:0] data_i,  // Input data
+    input  logic                  [$clog2(OUTPUT_RATIO)-1:0] s_i,     // Select signal
 
-    output DATA_TYPE      [NUM_OUTPUTS-1:0] data_o   // Output data
+    input  logic                           [NUM_OUTPUTS-1:0] replace_i,  // Indicates that the spare module is replacing a faulty module
+    input  logic [NUM_OUTPUTS-1:0][$clog2(OUTPUT_RATIO)-1:0] s_replace_i,  // Select signal for the spare module
+
+    output DATA_TYPE                       [NUM_OUTPUTS-1:0] data_o   // Output data
 );
 
-    assign data_o = data_i[s_i*NUM_OUTPUTS+:NUM_OUTPUTS];
+    always_comb begin
+        for(int i = 0; i < NUM_OUTPUTS; i++) begin
+            if(replace_i[i]) begin
+                data_o[i] = data_i[s_replace_i[i]*NUM_OUTPUTS+i];
+            end else begin
+                data_o[i] = data_i[s_i*NUM_OUTPUTS+i];
+            end
+        end
+    end
 
 endmodule
