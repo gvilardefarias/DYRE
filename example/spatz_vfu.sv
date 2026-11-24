@@ -41,6 +41,10 @@ module spatz_vfu
     output logic       [2:0] vrf_re_o,
     input  vrf_data_t  [2:0] vrf_rdata_i,
     input  logic       [2:0] vrf_rvalid_i,
+  `ifdef DYRE
+    input  logic                           [N_DYRE-1:0] replace_dyre_i,
+    input  logic [N_DYRE-1:0][$clog2(N_FPU/N_DYRE)-1:0] s_replace_dyre_i,
+  `endif
     // FPU side channel
     output status_t          fpu_status_o
   );
@@ -1074,6 +1078,7 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
   fpu_input_t  [N_DYRE-1:0] dyre_input;
 
   fpu_output_t  [N_FPU-1:0] fpu_output;
+  fpu_output_t  [N_FPU-1:0] dyre_data_o;
   fpu_output_t [N_DYRE-1:0] dyre_output;
 `endif
 
@@ -1291,11 +1296,9 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
         .rst_ni        (rst_ni                                                 ),
         .hart_id_i     ({hart_id_i[31-$clog2(N_FPU):0], fpu[$clog2(N_FPU)-1:0]}),
         .flush_i       (1'b0                                                   ),
-        .busy_o        (fpu_busy_d[fpu]                                        ),
         .operands_i    ({fpu_operand3_q, fpu_operand2_q, fpu_operand1_q}       ),
         // Only the FPU0 executes scalar instructions
         .in_valid_i    (fpu_in_valid_q                                         ),
-        .in_ready_o    (fpu_in_ready_d                                         ),
         .op_i          (fpu_op_q                                               ),
         .src_fmt_i     (fpu_src_fmt_q                                          ),
         .dst_fmt_i     (fpu_dst_fmt_q                                          ),
@@ -1305,11 +1308,22 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
         .tag_i         (input_tag_q                                            ),
         .simd_mask_i   ('1                                                     ),
         .rnd_mode_i    (rm_q                                                   ),
+        .out_ready_i   (result_ready                                           ),
+`ifdef DYRE
+        .busy_o        (fpu_output[fpu].busy_o                                 ),
+        .in_ready_o    (fpu_output[fpu].in_ready_o                             ),
+        .result_o      (fpu_output[fpu].result_o                               ),
+        .out_valid_o   (fpu_output[fpu].out_valid_o                            ),
+        .status_o      (fpu_output[fpu].status_o                               ),
+        .tag_o         (fpu_output[fpu].tag_o                                  )
+`else
+        .busy_o        (fpu_busy_d[fpu]                                        ),
+        .in_ready_o    (fpu_in_ready_d                                         ),
         .result_o      (fpu_result[fpu*ELEN +: ELEN]                           ),
         .out_valid_o   (int_fpu_result_valid                                   ),
-        .out_ready_i   (result_ready                                           ),
         .status_o      (fpu_status_d[fpu]                                      ),
         .tag_o         (tag                                                    )
+`endif
       );
 
 `ifdef DYRE
@@ -1326,12 +1340,12 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
       assign fpu_input[fpu].rnd_mode_i     = rm_q;
       assign fpu_input[fpu].out_ready_i    = result_ready;
 
-      assign fpu_output[fpu].in_ready_o  = fpu_in_ready_d;
-      assign fpu_output[fpu].busy_o      = fpu_busy_d[fpu];
-      assign fpu_output[fpu].result_o    = fpu_result[fpu*ELEN +: ELEN];
-      assign fpu_output[fpu].status_o    = fpu_status_d[fpu];
-      assign fpu_output[fpu].tag_o       = tag;
-      assign fpu_output[fpu].out_valid_o = int_fpu_result_valid;
+      assign fpu_in_ready_d               = dyre_data_o[fpu].in_ready_o;
+      assign fpu_busy_d[fpu]              = dyre_data_o[fpu].busy_o;
+      assign fpu_result[fpu*ELEN +: ELEN] = dyre_data_o[fpu].result_o;
+      assign fpu_status_d[fpu]            = dyre_data_o[fpu].status_o;
+      assign tag                          = dyre_data_o[fpu].tag_o;
+      assign int_fpu_result_valid         = dyre_data_o[fpu].out_valid_o;
 
       assign dyre_busy[fpu] = fpu_busy_d[fpu];
 `endif
@@ -1361,10 +1375,10 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
         .StochasticRndImplementation(fpnew_pkg::DEFAULT_RSR)
 `endif
       ) i_fpu_dyre (
-        .clk_i         (clk_i                          ),
-        .rst_ni        (rst_ni                         ),
+        .clk_i         (clk_i                              ),
+        .rst_ni        (rst_ni                             ),
         .hart_id_i     (dyre_input[dyre_idx].hart_id_i     ),
-        .flush_i       (1'b0                           ),
+        .flush_i       (1'b0                               ),
         .busy_o        (dyre_output[dyre_idx].busy_o       ),
         .operands_i    (dyre_input[dyre_idx].operands_i    ),
         .in_valid_i    (dyre_input[dyre_idx].in_valid_i    ),
@@ -1376,7 +1390,7 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
         .vectorial_op_i(dyre_input[dyre_idx].vectorial_op_i),
         .op_mod_i      (dyre_input[dyre_idx].op_mod_i      ),
         .tag_i         (dyre_input[dyre_idx].tag_i         ),
-        .simd_mask_i   ('1                             ),
+        .simd_mask_i   ('1                                 ),
         .rnd_mode_i    (dyre_input[dyre_idx].rnd_mode_i    ),
         .result_o      (dyre_output[dyre_idx].result_o     ),
         .out_valid_o   (dyre_output[dyre_idx].out_valid_o  ),
@@ -1391,10 +1405,13 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
     .NUM_INPUTS (N_FPU),
     .NUM_OUTPUTS(N_DYRE)
   ) i_crossbar (
-    .data_i (fpu_input ),
-    .s_i    (dyre_s    ),
+    .data_i     (fpu_input       ),
+    .s_i        (dyre_s          ),
+    .replace_i  (replace_dyre_i  ),
 
-    .data_o (dyre_input)
+    .s_replace_i(s_replace_dyre_i),
+
+    .data_o     (dyre_input      )
   );
 
   comparator #(
@@ -1402,24 +1419,30 @@ assign vfcmp_result_accepted = (spatz_req.op == VFCMP) && &(result_valid | ~pend
     .NUM_INPUTS (N_FPU),
     .NUM_REP    (N_DYRE)
   ) i_comparator (
-    .clk_i       (clk_i         ),
-    .rst_ni      (rst_ni        ),
-    .ref_i       (fpu_output    ),
-    .data_i      (dyre_output   ),
-    .s_i         (dyre_s        ),
+    .clk_i      (clk_i           ),
+    .rst_ni     (rst_ni          ),
+    .ref_i      (fpu_output      ),
+    .data_i     (dyre_output     ),
+    .s_i        (dyre_s          ),
 
-    .fault_det_o (dyre_fault_det)
+    .replace_i  (replace_dyre_i  ),
+    .s_replace_i(s_replace_dyre_i),
+
+    .fault_det_o(dyre_fault_det  ),
+    .data_o     (dyre_data_o     )
   );
 
   DYRE_controller #(
     .NUM_INPUTS (N_FPU),
     .NUM_REP    (N_DYRE)
   ) i_dyre_controller (
-    .clk_i  (clk_i    ),
-    .rst_ni (rst_ni   ),
-    .busy_i (dyre_busy),
+    .clk_i    (clk_i         ),
+    .rst_ni   (rst_ni        ),
+    .busy_i   (dyre_busy     ),
 
-    .s_o    (dyre_s   )
+    .replace_i(replace_dyre_i),
+
+    .s_o      (dyre_s        )
   );
 
   assert property (@(posedge clk_i) disable iff (!rst_ni)

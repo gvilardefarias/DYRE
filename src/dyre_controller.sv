@@ -5,6 +5,7 @@
 // Author: Gustavo Vilar de Farias, Politecnico di Torino, Italy
 //
 // The controller module drives the select signal
+// TODO: maybe put the replace logic here and pass already final s value for each spare unit
 
 module DYRE_controller #(
     parameter unsigned NUM_INPUTS    = 2,
@@ -13,9 +14,9 @@ module DYRE_controller #(
 
     localparam unsigned REP_RATIO = NUM_INPUTS/NUM_REP
 ) (
-    input  logic                            clk_i,
-    input  logic                            rst_ni,
-    input  logic           [NUM_INPUTS-1:0] busy_i,
+    input  logic                         clk_i,
+    input  logic                         rst_ni,
+    input  logic        [NUM_INPUTS-1:0] busy_i,
 
     input  logic           [NUM_REP-1:0] replace_i,  // Indicates that the spare module is replacing a faulty module
 
